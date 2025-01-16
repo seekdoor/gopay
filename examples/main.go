@@ -2,11 +2,10 @@ package main
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-pay/gopay"
 	"github.com/go-pay/gopay/alipay"
-	"github.com/go-pay/gopay/pkg/xlog"
+	"github.com/go-pay/xlog"
 )
 
 func main() {
@@ -20,7 +19,7 @@ func main() {
 	client.SetCharset("utf-8").
 		SetSignType(alipay.RSA2).
 		SetNotifyUrl("http://crm.deepic.cn/ali/pay/notify")
-	client.SetCertSnByPath("./appCertPublicKey_2021002103640726.crt", "./alipayRootCert.crt", "./alipayCertPublicKey_RSA2.crt")
+	client.SetCertSnByPath("./appPublicCert.crt", "./alipayRootCert.crt", "./alipayPublicCert.crt")
 
 	//请求参数
 	bm := gopay.BodyMap{}
@@ -28,5 +27,5 @@ func main() {
 	bm.Set("out_request_no", "20210402133958511778570101")
 	bm.Set("remark", "测试取消")
 	rs, err := client.FundAuthOperationCancel(context.Background(), bm)
-	fmt.Println(rs, err)
+	xlog.Infof("rs:%v, err:%+v", rs, err)
 }

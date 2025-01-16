@@ -5,14 +5,13 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/go-pay/gopay"
-	"github.com/go-pay/gopay/pkg/util"
-	"github.com/go-pay/gopay/pkg/xlog"
+	"github.com/go-pay/util"
+	"github.com/go-pay/xlog"
 )
 
 var (
@@ -81,7 +80,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestGetPlatformCertsWithoutClient(t *testing.T) {
-	certs, err := GetPlatformCerts(ctx, MchId, APIv3Key, SerialNo, PrivateKeyContent)
+	certs, err := GetPlatformCerts(ctx, MchId, APIv3Key, SerialNo, PrivateKeyContent, CertTypeALL)
 	if err != nil {
 		xlog.Error(err)
 		return
@@ -99,7 +98,7 @@ func TestGetPlatformCertsWithoutClient(t *testing.T) {
 }
 
 func TestGetAndSelectNewestCert(t *testing.T) {
-	serialNo, snCertMap, err := client.GetAndSelectNewestCert()
+	serialNo, snCertMap, err := client.GetAndSelectNewestCert(CertTypeALL)
 	if err != nil {
 		xlog.Error(err)
 		return
@@ -139,7 +138,7 @@ func TestV3Jsapi(t *testing.T) {
 	expire := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
 
 	bm := make(gopay.BodyMap)
-	bm.Set("appid", "appid").
+	bm.Set("appid", "wx52a25f196830f677").
 		Set("description", "测试Jsapi支付商品").
 		Set("out_trade_no", tradeNo).
 		Set("time_expire", expire).
@@ -215,7 +214,7 @@ func TestV3Native(t *testing.T) {
 	expire := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
 
 	bm := make(gopay.BodyMap)
-	bm.Set("appid", "wx52xxxxxxxxxxx").
+	bm.Set("appid", "wx52a25f196830f677").
 		Set("description", "测试Native支付商品").
 		Set("out_trade_no", tradeNo).
 		Set("time_expire", expire).
@@ -231,7 +230,7 @@ func TestV3Native(t *testing.T) {
 		return
 	}
 	if wxRsp.Code == Success {
-		xlog.Debugf("wxRsp: %+v", wxRsp.Response)
+		xlog.Debugf("wxRsp: %+v", wxRsp.Response.CodeUrl)
 		return
 	}
 	xlog.Errorf("wxRsp:%s", wxRsp.Error)
@@ -381,9 +380,9 @@ func TestV3BillDownLoadBill(t *testing.T) {
 	xlog.Debugf("fileBytes:%v", fileBytes)
 
 	// 申请账单时采用 GZIP 压缩，返回 bytes 为压缩文件
-	//err = ioutil.WriteFile("bill.zip", fileBytes, 0666)
+	//err = os.WriteFile("bill.zip", fileBytes, 0666)
 	//if err != nil {
-	//	xlog.Error("ioutil.WriteFile:", err)
+	//	xlog.Error("os.WriteFile:", err)
 	//	return
 	//}
 }
@@ -501,7 +500,7 @@ func TestV3ProfitSharingUnsplitQuery(t *testing.T) {
 
 func TestClientV3_V3MediaUploadImage(t *testing.T) {
 	fileName := "logo.png"
-	fileContent, err := ioutil.ReadFile("../../logo.png")
+	fileContent, err := os.ReadFile("../../logo.png")
 	if err != nil {
 		xlog.Error(err)
 		return
@@ -511,7 +510,7 @@ func TestClientV3_V3MediaUploadImage(t *testing.T) {
 	sha256Str := hex.EncodeToString(h.Sum(nil))
 	xlog.Debug("sha256：", sha256Str)
 
-	img := &util.File{
+	img := &gopay.File{
 		Name:    fileName,
 		Content: fileContent,
 	}
@@ -530,7 +529,7 @@ func TestClientV3_V3MediaUploadImage(t *testing.T) {
 
 func TestClientV3_V3ComplaintUploadImage(t *testing.T) {
 	fileName := "logo.png"
-	fileContent, err := ioutil.ReadFile("../../logo.png")
+	fileContent, err := os.ReadFile("../../logo.png")
 	if err != nil {
 		xlog.Error(err)
 		return
@@ -540,7 +539,7 @@ func TestClientV3_V3ComplaintUploadImage(t *testing.T) {
 	sha256Str := hex.EncodeToString(h.Sum(nil))
 	xlog.Debug("sha256：", sha256Str)
 
-	img := &util.File{
+	img := &gopay.File{
 		Name:    fileName,
 		Content: fileContent,
 	}

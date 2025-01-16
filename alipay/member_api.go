@@ -9,13 +9,12 @@ import (
 	"strings"
 
 	"github.com/go-pay/gopay"
-	"github.com/go-pay/gopay/pkg/util"
 )
 
 // alipay.system.oauth.token(换取授权访问令牌)
 // 文档地址：https://opendocs.alipay.com/open/02ailc
 func (a *Client) SystemOauthToken(ctx context.Context, bm gopay.BodyMap) (aliRsp *SystemOauthTokenResponse, err error) {
-	if bm.GetString("code") == util.NULL && bm.GetString("refresh_token") == util.NULL {
+	if bm.GetString("code") == gopay.NULL && bm.GetString("refresh_token") == gopay.NULL {
 		return nil, errors.New("code and refresh_token are not allowed to be null at the same time")
 	}
 	if err = bm.CheckEmptyError("grant_type"); err != nil {
@@ -25,18 +24,18 @@ func (a *Client) SystemOauthToken(ctx context.Context, bm gopay.BodyMap) (aliRsp
 		bs  []byte
 		aat string
 	)
-	if a.AppCertSN != util.NULL {
+	if a.AppCertSN != gopay.NULL {
 		bm.Set("app_cert_sn", a.AppCertSN)
 	}
-	if a.AliPayRootCertSN != util.NULL {
+	if a.AliPayRootCertSN != gopay.NULL {
 		bm.Set("alipay_root_cert_sn", a.AliPayRootCertSN)
 	}
 	// default use app_auth_token
-	if a.AppAuthToken != util.NULL {
+	if a.AppAuthToken != gopay.NULL {
 		aat = a.AppAuthToken
 	}
 	// if user set app_auth_token in body_map, use this
-	if bmAt := bm.GetString("app_auth_token"); bmAt != util.NULL {
+	if bmAt := bm.GetString("app_auth_token"); bmAt != gopay.NULL {
 		aat = bmAt
 	}
 	if bs, err = systemOauthToken(ctx, a.AppId, a.privateKey, bm, "alipay.system.oauth.token", a.IsProd, a.SignType, aat); err != nil {
@@ -49,6 +48,52 @@ func (a *Client) SystemOauthToken(ctx context.Context, bm gopay.BodyMap) (aliRsp
 	if aliRsp.ErrorResponse != nil {
 		info := aliRsp.ErrorResponse
 		return aliRsp, fmt.Errorf(`{"code":"%s","msg":"%s","sub_code":"%s","sub_msg":"%s"}`, info.Code, info.Msg, info.SubCode, info.SubMsg)
+	}
+	signData, signDataErr := a.getSignData(bs, aliRsp.AlipayCertSn)
+	aliRsp.SignData = signData
+	return aliRsp, a.autoVerifySignByCert(aliRsp.Sign, signData, signDataErr)
+}
+
+// alipay.open.auth.userauth.relationship.query(用户授权关系查询)
+// 文档地址：https://opendocs.alipay.com/open/6b97edd1_alipay.open.auth.userauth.relationship.query
+func (a *Client) UserAuthRelationshipQuery(ctx context.Context, bm gopay.BodyMap) (aliRsp *UserAuthRelationshipQueryRsp, err error) {
+	err = bm.CheckEmptyError("scopes")
+	if err != nil {
+		return nil, err
+	}
+	var bs []byte
+	if bs, err = a.doAliPay(ctx, bm, "alipay.open.auth.userauth.relationship.query"); err != nil {
+		return nil, err
+	}
+	aliRsp = new(UserAuthRelationshipQueryRsp)
+	if err = json.Unmarshal(bs, aliRsp); err != nil || aliRsp.Response == nil {
+		return nil, fmt.Errorf("[%w], bytes: %s", gopay.UnmarshalErr, string(bs))
+	}
+	if err = bizErrCheck(aliRsp.Response.ErrorResponse); err != nil {
+		return aliRsp, err
+	}
+	signData, signDataErr := a.getSignData(bs, aliRsp.AlipayCertSn)
+	aliRsp.SignData = signData
+	return aliRsp, a.autoVerifySignByCert(aliRsp.Sign, signData, signDataErr)
+}
+
+// alipay.user.deloauth.detail.query(查询解除授权明细)
+// 文档地址：https://opendocs.alipay.com/open/77e7fec5_alipay.user.deloauth.detail.query
+func (a *Client) UserDelOAuthDetailQuery(ctx context.Context, bm gopay.BodyMap) (aliRsp *UserDelOAuthDetailQueryRsp, err error) {
+	err = bm.CheckEmptyError("date", "limit", "offset")
+	if err != nil {
+		return nil, err
+	}
+	var bs []byte
+	if bs, err = a.doAliPay(ctx, bm, "alipay.user.deloauth.detail.query"); err != nil {
+		return nil, err
+	}
+	aliRsp = new(UserDelOAuthDetailQueryRsp)
+	if err = json.Unmarshal(bs, aliRsp); err != nil || aliRsp.Response == nil {
+		return nil, fmt.Errorf("[%w], bytes: %s", gopay.UnmarshalErr, string(bs))
+	}
+	if err = bizErrCheck(aliRsp.Response.ErrorResponse); err != nil {
+		return aliRsp, err
 	}
 	signData, signDataErr := a.getSignData(bs, aliRsp.AlipayCertSn)
 	aliRsp.SignData = signData
@@ -129,11 +174,11 @@ func (a *Client) UserCertifyOpenInit(ctx context.Context, bm gopay.BodyMap) (ali
 func (a *Client) UserCertifyOpenCertify(ctx context.Context, bm gopay.BodyMap) (certifyUrl string, err error) {
 	err = bm.CheckEmptyError("certify_id")
 	if err != nil {
-		return util.NULL, err
+		return gopay.NULL, err
 	}
 	var bs []byte
 	if bs, err = a.doAliPay(ctx, bm, "alipay.user.certify.open.certify"); err != nil {
-		return util.NULL, err
+		return gopay.NULL, err
 	}
 	certifyUrl = string(bs)
 	return certifyUrl, nil
@@ -163,11 +208,11 @@ func (a *Client) UserCertifyOpenQuery(ctx context.Context, bm gopay.BodyMap) (al
 }
 
 // alipay.user.agreement.page.sign(支付宝个人协议页面签约接口)
-// 文档地址：https://opendocs.alipay.com/apis/api_2/alipay.user.agreement.page.sign
+// 文档地址：https://opendocs.alipay.com/open/8bccfa0b_alipay.user.agreement.page.sign
 func (a *Client) UserAgreementPageSign(ctx context.Context, bm gopay.BodyMap) (ret string, err error) {
 	err = bm.CheckEmptyError("personal_product_code")
 	if err != nil {
-		return util.NULL, err
+		return gopay.NULL, err
 	}
 	var bs []byte
 	if bs, err = a.doAliPay(ctx, bm, "alipay.user.agreement.page.sign"); err != nil {
@@ -181,13 +226,13 @@ func (a *Client) UserAgreementPageSign(ctx context.Context, bm gopay.BodyMap) (r
 func (a *Client) UserAgreementPageSignInApp(ctx context.Context, bm gopay.BodyMap) (ret string, err error) {
 	err = bm.CheckEmptyError("personal_product_code")
 	if err != nil {
-		return util.NULL, err
+		return gopay.NULL, err
 	}
 
 	var bs string
 	// 参考官方示例
-	// pageExecute get方式，生成url
-	if bs, err = a.pageExecute(ctx, bm, "alipay.user.agreement.page.sign"); err != nil {
+	// PageExecute get方式，生成url
+	if bs, err = a.PageExecute(ctx, bm, "alipay.user.agreement.page.sign"); err != nil {
 		return "", err
 	}
 
@@ -205,7 +250,7 @@ func (a *Client) UserAgreementPageSignInApp(ctx context.Context, bm gopay.BodyMa
 }
 
 // alipay.user.agreement.unsign(支付宝个人代扣协议解约接口)
-// 文档地址：https://opendocs.alipay.com/apis/api_2/alipay.user.agreement.page.unsign
+// 文档地址：https://opendocs.alipay.com/open/b841da1f_alipay.user.agreement.unsign
 func (a *Client) UserAgreementPageUnSign(ctx context.Context, bm gopay.BodyMap) (aliRsp *UserAgreementPageUnSignRsp, err error) {
 	var bs []byte
 	if bs, err = a.doAliPay(ctx, bm, "alipay.user.agreement.unsign"); err != nil {
@@ -224,7 +269,7 @@ func (a *Client) UserAgreementPageUnSign(ctx context.Context, bm gopay.BodyMap) 
 }
 
 // alipay.user.agreement.query(支付宝个人代扣协议查询接口)
-// 文档地址：https://opendocs.alipay.com/apis/api_2/alipay.user.agreement.query
+// 文档地址：https://opendocs.alipay.com/open/3dab71bc_alipay.user.agreement.query
 func (a *Client) UserAgreementQuery(ctx context.Context, bm gopay.BodyMap) (aliRsp *UserAgreementQueryRsp, err error) {
 	var bs []byte
 	if bs, err = a.doAliPay(ctx, bm, "alipay.user.agreement.query"); err != nil {

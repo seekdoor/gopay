@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/go-pay/gopay"
-	"github.com/go-pay/gopay/pkg/xlog"
+	"github.com/go-pay/xlog"
 )
 
 func TestGetTransactionHistory(t *testing.T) {
@@ -13,20 +13,17 @@ func TestGetTransactionHistory(t *testing.T) {
 		"sort": "ASCENDING",
 	}
 	originalTransactionId := "2000000184445477"
-	rsp, err := GetTransactionHistory(ctx, &SignConfig{
-		IssuerID:   "xxxxxxx-b6d3-44da-a777-xxxxxx",
-		BundleID:   "com.xxxxxxx.xxxxx",
-		AppleKeyID: "xxxxxxxxx",
-		ApplePrivateKey: `-----BEGIN PRIVATE KEY-----
-xxxx
------END PRIVATE KEY-----`,
-	}, originalTransactionId, bm, true)
+	rsp, err := client.GetTransactionHistory(ctx, originalTransactionId, bm)
 	if err != nil {
-		xlog.Error(err)
+		if statusErr, ok := IsStatusCodeError(err); ok {
+			xlog.Errorf("%+v", statusErr)
+			// do something
+			return
+		}
+		xlog.Errorf("client.GetTransactionHistory(),err:%+v", err)
 		return
 	}
 	/**
-		response body:
 		{
 	    "appAppleId":0,
 	    "bundleId":"Com.VoiceRecording.Telephone",

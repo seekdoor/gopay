@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/go-pay/gopay"
-	"github.com/go-pay/gopay/pkg/util"
+	"github.com/go-pay/util"
 )
 
 // VerifySign 微信同步返回参数验签或异步通知参数验签
@@ -23,7 +23,7 @@ import (
 // bean：微信同步返回的结构体 wxRsp 或 异步通知解析的结构体 notifyReq，推荐通 BodyMap 验签
 // 返回参数ok：是否验签通过
 // 返回参数err：其他错误信息，不要根据 error 是否为空来判断验签正确与否，需再单独判断返回的 ok
-func VerifySign(apiKey, signType string, bean interface{}) (ok bool, err error) {
+func VerifySign(apiKey, signType string, bean any) (ok bool, err error) {
 	if bean == nil {
 		return false, errors.New("bean is nil")
 	}
@@ -37,11 +37,11 @@ func VerifySign(apiKey, signType string, bean interface{}) (ok bool, err error) 
 
 	bs, err := json.Marshal(bean)
 	if err != nil {
-		return false, fmt.Errorf("json.Marshal(%s)：%w", string(bs), err)
+		return false, fmt.Errorf("json.Marshal(%s): %w", string(bs), err)
 	}
 	bm := make(gopay.BodyMap)
 	if err = json.Unmarshal(bs, &bm); err != nil {
-		return false, fmt.Errorf("json.Marshal(%s)：%w", string(bs), err)
+		return false, fmt.Errorf("json.Marshal(%s): %w", string(bs), err)
 	}
 	bodySign := bm.GetString("sign")
 	bm.Remove("sign")
@@ -176,7 +176,7 @@ func GetParamSign(appId, mchId, apiKey string, bm gopay.BodyMap) (sign string) {
 		h        hash.Hash
 	)
 	signType = bm.GetString("sign_type")
-	if signType == util.NULL {
+	if signType == gopay.NULL {
 		bm.Set("sign_type", SignType_MD5)
 	}
 	if signType == SignType_HMAC_SHA256 {

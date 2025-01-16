@@ -13,12 +13,12 @@ import (
 	"reflect"
 	"time"
 
+	xaes "github.com/go-pay/crypto/aes"
+	"github.com/go-pay/crypto/xpem"
+	"github.com/go-pay/crypto/xrsa"
 	"github.com/go-pay/gopay"
-	xaes "github.com/go-pay/gopay/pkg/aes"
-	"github.com/go-pay/gopay/pkg/util"
 	"github.com/go-pay/gopay/pkg/xhttp"
-	"github.com/go-pay/gopay/pkg/xpem"
-	"github.com/go-pay/gopay/pkg/xrsa"
+	"github.com/go-pay/xtime"
 )
 
 // 格式化请求URL参数
@@ -34,10 +34,9 @@ func FormatURLParam(body gopay.BodyMap) (urlParam string) {
 // encryptedData:包括敏感数据在内的完整用户信息的加密数据
 // secretKey:AES密钥，支付宝管理平台配置
 // beanPtr:需要解析到的结构体指针
-// 文档：https://opendocs.alipay.com/mini/introduce/aes
-// 文档：https://opendocs.alipay.com/open/common/104567
-func DecryptOpenDataToStruct(encryptedData, secretKey string, beanPtr interface{}) (err error) {
-	if encryptedData == util.NULL || secretKey == util.NULL {
+// 文档：https://opendocs.alipay.com/common/02mse3
+func DecryptOpenDataToStruct(encryptedData, secretKey string, beanPtr any) (err error) {
+	if encryptedData == gopay.NULL || secretKey == gopay.NULL {
 		return errors.New("encryptedData or secretKey is null")
 	}
 	beanValue := reflect.ValueOf(beanPtr)
@@ -45,7 +44,7 @@ func DecryptOpenDataToStruct(encryptedData, secretKey string, beanPtr interface{
 		return errors.New("传入参数类型必须是以指针形式")
 	}
 	if beanValue.Elem().Kind() != reflect.Struct {
-		return errors.New("传入interface{}必须是结构体")
+		return errors.New("传入any必须是结构体")
 	}
 	var (
 		block      cipher.Block
@@ -56,7 +55,7 @@ func DecryptOpenDataToStruct(encryptedData, secretKey string, beanPtr interface{
 	ivKey := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	secretData, _ := base64.StdEncoding.DecodeString(encryptedData)
 	if block, err = aes.NewCipher(aesKey); err != nil {
-		return fmt.Errorf("aes.NewCipher：%w", err)
+		return fmt.Errorf("aes.NewCipher: %w", err)
 	}
 	if len(secretData)%len(aesKey) != 0 {
 		return errors.New("encryptedData is error")
@@ -68,7 +67,7 @@ func DecryptOpenDataToStruct(encryptedData, secretKey string, beanPtr interface{
 		originData = xaes.PKCS5UnPadding(originData)
 	}
 	if err = json.Unmarshal(originData, beanPtr); err != nil {
-		return fmt.Errorf("json.Unmarshal(%s)：%w", string(originData), err)
+		return fmt.Errorf("json.Unmarshal(%s): %w", string(originData), err)
 	}
 	return nil
 }
@@ -76,10 +75,9 @@ func DecryptOpenDataToStruct(encryptedData, secretKey string, beanPtr interface{
 // DecryptOpenDataToBodyMap 解密支付宝开放数据到 BodyMap
 // encryptedData:包括敏感数据在内的完整用户信息的加密数据
 // secretKey:AES密钥，支付宝管理平台配置
-// 文档：https://opendocs.alipay.com/mini/introduce/aes
-// 文档：https://opendocs.alipay.com/open/common/104567
+// 文档：https://opendocs.alipay.com/common/02mse3
 func DecryptOpenDataToBodyMap(encryptedData, secretKey string) (bm gopay.BodyMap, err error) {
-	if encryptedData == util.NULL || secretKey == util.NULL {
+	if encryptedData == gopay.NULL || secretKey == gopay.NULL {
 		return nil, errors.New("encryptedData or secretKey is null")
 	}
 	var (
@@ -91,7 +89,7 @@ func DecryptOpenDataToBodyMap(encryptedData, secretKey string) (bm gopay.BodyMap
 	aesKey, _ = base64.StdEncoding.DecodeString(secretKey)
 	secretData, _ := base64.StdEncoding.DecodeString(encryptedData)
 	if block, err = aes.NewCipher(aesKey); err != nil {
-		return nil, fmt.Errorf("aes.NewCipher：%w", err)
+		return nil, fmt.Errorf("aes.NewCipher: %w", err)
 	}
 	if len(secretData)%len(aesKey) != 0 {
 		return nil, errors.New("encryptedData is error")
@@ -104,7 +102,7 @@ func DecryptOpenDataToBodyMap(encryptedData, secretKey string) (bm gopay.BodyMap
 	}
 	bm = make(gopay.BodyMap)
 	if err = json.Unmarshal(originData, &bm); err != nil {
-		return nil, fmt.Errorf("json.Unmarshal(%s)：%w", string(originData), err)
+		return nil, fmt.Errorf("json.Unmarshal(%s): %w", string(originData), err)
 	}
 	return
 }
@@ -145,7 +143,7 @@ func SystemOauthToken(ctx context.Context, appId string, privateKey, grantType, 
 	}
 	rsp = new(SystemOauthTokenResponse)
 	if err = json.Unmarshal(bs, rsp); err != nil {
-		return nil, fmt.Errorf("json.Unmarshal(%s)：%w", string(bs), err)
+		return nil, fmt.Errorf("json.Unmarshal(%s): %w", string(bs), err)
 	}
 	if (rsp.Response == nil) || (rsp.Response != nil && rsp.Response.AccessToken == "") {
 		return nil, errors.New("response is nil or access_token is NULL")
@@ -159,14 +157,14 @@ func systemOauthToken(ctx context.Context, appId string, privateKey *rsa.Private
 	bm.Set("method", method)
 	bm.Set("format", "JSON")
 	bm.Set("charset", "utf-8")
-	if signType == util.NULL {
+	if signType == gopay.NULL {
 		bm.Set("sign_type", RSA2)
 	} else {
 		bm.Set("sign_type", signType)
 	}
-	bm.Set("timestamp", time.Now().Format(util.TimeLayout))
+	bm.Set("timestamp", time.Now().Format(xtime.TimeLayout))
 	bm.Set("version", "1.0")
-	if appAuthToken != util.NULL {
+	if appAuthToken != gopay.NULL {
 		bm.Set("app_auth_token", appAuthToken)
 	}
 	var (
@@ -180,7 +178,7 @@ func systemOauthToken(ctx context.Context, appId string, privateKey *rsa.Private
 	if !isProd {
 		baseUrl = sandboxBaseUrlUtf8
 	}
-	_, bs, err = xhttp.NewClient().Type(xhttp.TypeForm).Post(baseUrl).SendString(bm.EncodeURLParams()).EndBytes(ctx)
+	_, bs, err = xhttp.NewClient().Req(xhttp.TypeFormData).Post(baseUrl).SendString(bm.EncodeURLParams()).EndBytes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -206,12 +204,12 @@ func MonitorHeartbeatSyn(ctx context.Context, appId string, privateKey, signType
 	bm.Set("method", "monitor.heartbeat.syn")
 	bm.Set("format", "JSON")
 	bm.Set("charset", "utf-8")
-	if signType == util.NULL {
+	if signType == gopay.NULL {
 		bm.Set("sign_type", RSA2)
 	} else {
 		bm.Set("sign_type", signType)
 	}
-	bm.Set("timestamp", time.Now().Format(util.TimeLayout))
+	bm.Set("timestamp", time.Now().Format(xtime.TimeLayout))
 	bm.Set("version", "1.0")
 
 	sign, err := GetRsaSign(bm, bm.GetString("sign_type"), priKey)
@@ -220,7 +218,7 @@ func MonitorHeartbeatSyn(ctx context.Context, appId string, privateKey, signType
 	}
 	bm.Set("sign", sign)
 
-	_, bs, err = xhttp.NewClient().Type(xhttp.TypeForm).Post(baseUrlUtf8).SendString(bm.EncodeURLParams()).EndBytes(ctx)
+	_, bs, err = xhttp.NewClient().Req(xhttp.TypeFormData).Post(baseUrlUtf8).SendString(bm.EncodeURLParams()).EndBytes(ctx)
 	if err != nil {
 		return nil, err
 	}

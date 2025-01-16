@@ -8,38 +8,74 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-pay/crypto/aes"
+	"github.com/go-pay/crypto/xpem"
+	"github.com/go-pay/errgroup"
 	"github.com/go-pay/gopay"
-	"github.com/go-pay/gopay/pkg/aes"
-	"github.com/go-pay/gopay/pkg/errgroup"
-	"github.com/go-pay/gopay/pkg/retry"
-	"github.com/go-pay/gopay/pkg/util"
 	"github.com/go-pay/gopay/pkg/xhttp"
-	"github.com/go-pay/gopay/pkg/xlog"
-	"github.com/go-pay/gopay/pkg/xpem"
-	"github.com/go-pay/gopay/pkg/xtime"
+	"github.com/go-pay/util"
+	"github.com/go-pay/util/convert"
+	"github.com/go-pay/util/retry"
+	"github.com/go-pay/xtime"
 )
 
-// 获取微信平台证书公钥（获取后自行保存使用，如需定期刷新功能，自行实现）
+// 设置代理Host地址
+// 使用场景：
+// 1. 部署环境无法访问互联网，可以通过代理服务器访问
+var (
+	proxyHost string
+	mu        sync.RWMutex
+)
+
+// GetProxyHost 返回当前的 ProxyHost
+func GetProxyHost() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return proxyHost
+}
+
+// SetProxyHost 设置新的 ProxyHost
+// 注意：目前仅适用于 wechat.GetPlatformCerts() 函数
+func SetProxyHost(newProxyHost string) {
+	mu.Lock()
+	defer mu.Unlock()
+	before, found := strings.CutSuffix(newProxyHost, "/")
+	if found {
+		proxyHost = before
+		return
+	}
+	proxyHost = newProxyHost
+}
+
+// 获取平台RSA证书列表（获取后自行保存使用，如需定期刷新功能，自行实现）
 // 注意事项
 // 如果自行实现验证平台签名逻辑的话，需要注意以下事项:
-//   - 程序实现定期更新平台证书的逻辑，不要硬编码验证应答消息签名的平台证书
-//   - 定期调用该接口，间隔时间小于12小时
-//   - 加密请求消息中的敏感信息时，使用最新的平台证书（即：证书启用时间较晚的证书）
-//
+// - 程序实现定期更新平台证书的逻辑，不要硬编码验证应答消息签名的平台证书
+// - 定期调用该接口，间隔时间小于12小时
+// - 加密请求消息中的敏感信息时，使用最新的平台证书（即：证书启用时间较晚的证书）
 // 文档说明：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/wechatpay5_1.shtml
-func GetPlatformCerts(ctx context.Context, mchid, apiV3Key, serialNo, privateKey string) (certs *PlatformCertRsp, err error) {
+func GetPlatformCerts(ctx context.Context, mchid, apiV3Key, serialNo, privateKey string, certType ...CertType) (certs *PlatformCertRsp, err error) {
 	var (
-		eg = new(errgroup.Group)
-		mu sync.Mutex
-		jb = ""
+		eg  = new(errgroup.Group)
+		mu  sync.Mutex
+		jb  = ""
+		uri = v3GetCerts
 	)
+	if len(certType) > 1 {
+		return nil, fmt.Errorf("certType must be one of `RSA` or `SM2` or `ALL`")
+	}
+	if len(certType) == 1 {
+		uri += "?algorithm_type=" + string(certType[0])
+	}
 	// Prepare
 	priKey, err := xpem.DecodePrivateKey([]byte(privateKey))
 	if err != nil {
@@ -48,8 +84,8 @@ func GetPlatformCerts(ctx context.Context, mchid, apiV3Key, serialNo, privateKey
 
 	timestamp := time.Now().Unix()
 	nonceStr := util.RandomString(32)
-	ts := util.Int642String(timestamp)
-	_str := MethodGet + "\n" + v3GetCerts + "\n" + ts + "\n" + nonceStr + "\n" + jb + "\n"
+	ts := convert.Int64ToString(timestamp)
+	_str := MethodGet + "\n" + uri + "\n" + ts + "\n" + nonceStr + "\n" + jb + "\n"
 	// Sign
 	h := sha256.New()
 	h.Write([]byte(_str))
@@ -61,13 +97,16 @@ func GetPlatformCerts(ctx context.Context, mchid, apiV3Key, serialNo, privateKey
 	// Authorization
 	authorization := Authorization + ` mchid="` + mchid + `",nonce_str="` + nonceStr + `",timestamp="` + ts + `",serial_no="` + serialNo + `",signature="` + sign + `"`
 	// Request
-	var url = v3BaseUrlCh + v3GetCerts
-	httpClient := xhttp.NewClient()
-	httpClient.Header.Add(HeaderAuthorization, authorization)
-	httpClient.Header.Add(HeaderRequestID, fmt.Sprintf("%s-%d", util.RandomString(21), time.Now().Unix()))
-	httpClient.Header.Add(HeaderSerial, serialNo)
-	httpClient.Header.Add("Accept", "*/*")
-	res, bs, err := httpClient.Type(xhttp.TypeJSON).Get(url).EndBytes(ctx)
+	var url = v3BaseUrlCh + uri
+	if proxyHost != "" {
+		url = proxyHost + uri
+	}
+	hc := xhttp.NewClient().Req()
+	hc.Header.Add(HeaderAuthorization, authorization)
+	hc.Header.Add(HeaderRequestID, fmt.Sprintf("%s-%d", util.RandomString(21), time.Now().Unix()))
+	hc.Header.Add(HeaderSerial, serialNo)
+	hc.Header.Add("Accept", "application/json")
+	res, bs, err := hc.Get(url).EndBytes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -111,21 +150,31 @@ func GetPlatformCerts(ctx context.Context, mchid, apiV3Key, serialNo, privateKey
 	return certs, nil
 }
 
+// 获取平台RSA证书列表
+func GetPlatformRSACerts(ctx context.Context, mchid, apiV3Key, serialNo, privateKey string) (certs *PlatformCertRsp, err error) {
+	return GetPlatformCerts(ctx, mchid, apiV3Key, serialNo, privateKey, CertTypeRSA)
+}
+
+// 获取国密平台证书
+func GetPlatformSM2Certs(ctx context.Context, mchid, apiV3Key, serialNo, privateKey string) (certs *PlatformCertRsp, err error) {
+	return GetPlatformCerts(ctx, mchid, apiV3Key, serialNo, privateKey, CertTypeSM2)
+}
+
 // 设置 微信支付平台证书 和 证书序列号
-//
-//	注意1：如已开启自动验签功能 client.AutoVerifySign()，无需再调用此方法设置
-//	注意2：请预先通过 wechat.GetPlatformCerts() 获取 微信平台公钥证书 和 证书序列号
-//	部分接口请求参数中敏感信息加密，使用此 微信支付平台公钥 和 证书序列号
-func (c *ClientV3) SetPlatformCert(wxPublicKeyContent []byte, wxSerialNo string) (client *ClientV3) {
+// 注意1：如已开启自动验签功能 client.AutoVerifySign()，无需再调用此方法设置
+// 注意2：请预先通过 wechat.GetPlatformCerts() 获取 微信平台公钥证书 和 证书序列号
+// 部分接口请求参数中敏感信息加密，使用此 微信支付平台公钥 和 证书序列号
+func (c *ClientV3) SetPlatformCert(wxPublicKeyContent []byte, wxSerialNo string) (err error) {
 	pubKey, err := xpem.DecodePublicKey(wxPublicKeyContent)
 	if err != nil {
-		xlog.Errorf("SetPlatformCert(%s),err:%+v", wxPublicKeyContent, err)
+		return err
 	}
-	if pubKey != nil {
-		c.wxPublicKey = pubKey
+	if pubKey == nil {
+		return errors.New("xpem.DecodePublicKey() failed, pubKey is nil")
 	}
+	c.wxPublicKey = pubKey
 	c.WxSerialNo = wxSerialNo
-	return c
+	return nil
 }
 
 // 获取最新的 微信平台证书
@@ -136,16 +185,18 @@ func (c *ClientV3) WxPublicKey() (wxPublicKey *rsa.PublicKey) {
 // 获取 微信平台证书 Map（readonly）
 // wxPublicKeyMap: key:SerialNo, value:WxPublicKey
 func (c *ClientV3) WxPublicKeyMap() (wxPublicKeyMap map[string]*rsa.PublicKey) {
-	wxPublicKeyMap = make(map[string]*rsa.PublicKey, len(c.SnCertMap))
-	for k, v := range c.SnCertMap {
+	wxPublicKeyMap = make(map[string]*rsa.PublicKey)
+	c.SnCertMap.Range(func(k string, v *rsa.PublicKey) bool {
 		wxPublicKeyMap[k] = v
-	}
+		return true
+	})
 	return wxPublicKeyMap
 }
 
-// 获取证书Map集并选择最新的有效证书序列号
-func (c *ClientV3) GetAndSelectNewestCert() (serialNo string, snCertMap map[string]string, err error) {
-	certs, err := c.getPlatformCerts()
+// 获取证书Map集并选择最新的有效证书序列号（默认RSA证书）
+// 文档说明：https://pay.weixin.qq.com/docs/merchant/apis/platform-certificate/api-v3-get-certificates/get.html
+func (c *ClientV3) GetAndSelectNewestCert(certType ...CertType) (serialNo string, snCertMap map[string]string, err error) {
+	certs, err := c.getPlatformCerts(certType...)
 	if err != nil {
 		return gopay.NULL, nil, err
 	}
@@ -196,7 +247,23 @@ func (c *ClientV3) GetAndSelectNewestCert() (serialNo string, snCertMap map[stri
 		return newestCert.SerialNo, snCertMap, nil
 	}
 	// failed
-	return gopay.NULL, nil, fmt.Errorf("GetAndSelectNewestCert() failed or certs is nil: %+v", certs)
+	return gopay.NULL, nil, fmt.Errorf("GetAndSelectNewestCert() failed or certs is empty: %+v", certs)
+}
+
+// 获取证书Map集并选择最新的有效RSA证书序列号
+func (c *ClientV3) GetAndSelectNewestCertRSA() (serialNo string, snCertMap map[string]string, err error) {
+	return c.GetAndSelectNewestCert(CertTypeRSA)
+}
+
+// 获取证书Map集并选择最新的有效SM2证书序列号
+// 文档：https://pay.weixin.qq.com/docs/merchant/development/shangmi/key-and-certificate.html
+func (c *ClientV3) GetAndSelectNewestCertSM2() (serialNo string, snCertMap map[string]string, err error) {
+	return c.GetAndSelectNewestCert(CertTypeSM2)
+}
+
+// 获取证书Map集并选择最新的有效RSA+SM2证书序列号
+func (c *ClientV3) GetAndSelectNewestCertALL() (serialNo string, snCertMap map[string]string, err error) {
+	return c.GetAndSelectNewestCert(CertTypeALL)
 }
 
 // 推荐直接使用 client.GetAndSelectNewestCert() 方法
@@ -207,19 +274,24 @@ func (c *ClientV3) GetAndSelectNewestCert() (serialNo string, snCertMap map[stri
 //   - 定期调用该接口，间隔时间小于12小时
 //   - 加密请求消息中的敏感信息时，使用最新的平台证书（即：证书启用时间较晚的证书）
 //
-// 文档说明：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/wechatpay5_1.shtml
-func (c *ClientV3) getPlatformCerts() (certs *PlatformCertRsp, err error) {
+// 文档说明：https://pay.weixin.qq.com/docs/merchant/apis/platform-certificate/api-v3-get-certificates/get.html
+func (c *ClientV3) getPlatformCerts(certType ...CertType) (certs *PlatformCertRsp, err error) {
 	var (
-		eg = new(errgroup.Group)
-		mu sync.Mutex
+		eg  = new(errgroup.Group)
+		mu  sync.Mutex
+		uri = v3GetCerts
 	)
-
-	authorization, err := c.authorization(MethodGet, v3GetCerts, nil)
+	if len(certType) > 1 {
+		return nil, fmt.Errorf("certType must be one of `RSA` or `SM2` or `ALL`")
+	}
+	if len(certType) == 1 {
+		uri += "?algorithm_type=" + string(certType[0])
+	}
+	authorization, err := c.authorization(MethodGet, uri, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	res, _, bs, err := c.doProdGet(c.ctx, v3GetCerts, authorization)
+	res, _, bs, err := c.doProdGet(c.ctx, uri, authorization)
 	if err != nil {
 		return nil, err
 	}
@@ -272,12 +344,12 @@ func (c *ClientV3) decryptCerts(ciphertext, nonce, additional string) (wxCerts s
 }
 
 func (c *ClientV3) autoCheckCertProc() {
-	xlog.Info("auto refresh wechat platform public key")
+	c.logger.Warn("auto refresh wechat platform public key")
 	defer func() {
 		if r := recover(); r != nil {
 			buf := make([]byte, 64<<10)
 			buf = buf[:runtime.Stack(buf, false)]
-			xlog.Errorf("autoCheckCertProc: panic recovered: %s\n%s", r, buf)
+			c.logger.Errorf("autoCheckCertProc: panic recovered: %s\n%s", r, buf)
 			// 重启
 			c.autoCheckCertProc()
 		}
@@ -289,23 +361,21 @@ func (c *ClientV3) autoCheckCertProc() {
 			if err != nil {
 				return err
 			}
-			snPkMap := make(map[string]*rsa.PublicKey)
 			for sn, cert := range snCertMap {
 				pubKey, err := xpem.DecodePublicKey([]byte(cert))
 				if err != nil {
 					return err
 				}
-				snPkMap[sn] = pubKey
+				c.SnCertMap.Store(sn, pubKey)
+				if sn == serialNo {
+					c.wxPublicKey = pubKey
+				}
 			}
-			c.rwMu.Lock()
-			c.SnCertMap = snPkMap
 			c.WxSerialNo = serialNo
-			c.wxPublicKey = snPkMap[serialNo]
-			c.rwMu.Unlock()
 			return nil
 		}, 3, time.Second)
 		if err != nil {
-			xlog.Errorf("c.GetAndSelectNewestCert()，err:%+v", err)
+			c.logger.Errorf("c.GetAndSelectNewestCert()，err:%+v", err)
 			continue
 		}
 	}

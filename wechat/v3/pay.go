@@ -8,14 +8,12 @@ import (
 	"net/http"
 
 	"github.com/go-pay/gopay"
-	"github.com/go-pay/gopay/pkg/util"
 )
 
-// APP下单API
+// APP下单
 // Code = 0 is success
-// 商户文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_2_1.shtml
 func (c *ClientV3) V3TransactionApp(ctx context.Context, bm gopay.BodyMap) (wxRsp *PrepayRsp, err error) {
-	if bm.GetString("mchid") == util.NULL {
+	if bm.GetString("mchid") == gopay.NULL {
 		bm.Set("mchid", c.Mchid)
 	}
 	authorization, err := c.authorization(MethodPost, v3ApiApp, bm)
@@ -39,12 +37,10 @@ func (c *ClientV3) V3TransactionApp(ctx context.Context, bm gopay.BodyMap) (wxRs
 	return wxRsp, c.verifySyncSign(si)
 }
 
-// JSAPI/小程序下单API
+// JSAPI/小程序下单
 // Code = 0 is success
-// 商户JSAPI文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_1_1.shtml
-// 商户小程序文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_5_1.shtml
 func (c *ClientV3) V3TransactionJsapi(ctx context.Context, bm gopay.BodyMap) (wxRsp *PrepayRsp, err error) {
-	if bm.GetString("mchid") == util.NULL {
+	if bm.GetString("mchid") == gopay.NULL {
 		bm.Set("mchid", c.Mchid)
 	}
 	authorization, err := c.authorization(MethodPost, v3ApiJsapi, bm)
@@ -68,11 +64,10 @@ func (c *ClientV3) V3TransactionJsapi(ctx context.Context, bm gopay.BodyMap) (wx
 	return wxRsp, c.verifySyncSign(si)
 }
 
-// Native下单API
+// Native下单
 // Code = 0 is success
-// 文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_4_1.shtml
 func (c *ClientV3) V3TransactionNative(ctx context.Context, bm gopay.BodyMap) (wxRsp *NativeRsp, err error) {
-	if bm.GetString("mchid") == util.NULL {
+	if bm.GetString("mchid") == gopay.NULL {
 		bm.Set("mchid", c.Mchid)
 	}
 	authorization, err := c.authorization(MethodPost, v3ApiNative, bm)
@@ -96,11 +91,10 @@ func (c *ClientV3) V3TransactionNative(ctx context.Context, bm gopay.BodyMap) (w
 	return wxRsp, c.verifySyncSign(si)
 }
 
-// H5下单API
+// H5下单
 // Code = 0 is success
-// 商户文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_3_1.shtml
 func (c *ClientV3) V3TransactionH5(ctx context.Context, bm gopay.BodyMap) (wxRsp *H5Rsp, err error) {
-	if bm.GetString("mchid") == util.NULL {
+	if bm.GetString("mchid") == gopay.NULL {
 		bm.Set("mchid", c.Mchid)
 	}
 	authorization, err := c.authorization(MethodPost, v3ApiH5, bm)
@@ -124,9 +118,36 @@ func (c *ClientV3) V3TransactionH5(ctx context.Context, bm gopay.BodyMap) (wxRsp
 	return wxRsp, c.verifySyncSign(si)
 }
 
-// 查询订单API
+// QQ小程序H5下单
 // Code = 0 is success
-// 商户文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_1_2.shtml
+func (c *ClientV3) V3QQTransactionH5(ctx context.Context, qqAppid, accessToken, realNotifyUrl string, bm gopay.BodyMap) (wxRsp *H5Rsp, err error) {
+	if bm.GetString("mchid") == gopay.NULL {
+		bm.Set("mchid", c.Mchid)
+	}
+	authorization, err := c.authorization(MethodPost, v3ApiH5, bm)
+	if err != nil {
+		return nil, err
+	}
+	path := "/wxpay/v3/pay/transactions/h5?appid=" + qqAppid + "&access_token=" + accessToken + "&real_notify_url=" + realNotifyUrl
+	res, si, bs, err := c.doProdPostWithHost(ctx, bm, "https://api.q.qq.com", path, authorization)
+	if err != nil {
+		return nil, err
+	}
+	wxRsp = &H5Rsp{Code: Success, SignInfo: si}
+	wxRsp.Response = new(H5Url)
+	if err = json.Unmarshal(bs, wxRsp.Response); err != nil {
+		return nil, fmt.Errorf("[%w]: %v, bytes: %s", gopay.UnmarshalErr, err, string(bs))
+	}
+	if res.StatusCode != http.StatusOK {
+		wxRsp.Code = res.StatusCode
+		wxRsp.Error = string(bs)
+		return wxRsp, nil
+	}
+	return wxRsp, c.verifySyncSign(si)
+}
+
+// 商户订单号/微信支付订单号 查询订单
+// Code = 0 is success
 func (c *ClientV3) V3TransactionQueryOrder(ctx context.Context, orderNoType OrderNoType, orderNo string) (wxRsp *QueryOrderRsp, err error) {
 	var uri string
 	switch orderNoType {
@@ -161,7 +182,6 @@ func (c *ClientV3) V3TransactionQueryOrder(ctx context.Context, orderNoType Orde
 
 // 关闭订单API
 // Code = 0 is success
-// 商户文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter3_1_3.shtml
 func (c *ClientV3) V3TransactionCloseOrder(ctx context.Context, tradeNo string) (wxRsp *CloseOrderRsp, err error) {
 	url := fmt.Sprintf(v3ApiCloseOrder, tradeNo)
 	bm := make(gopay.BodyMap)
