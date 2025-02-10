@@ -3,7 +3,7 @@ package alipay
 import (
 	"github.com/go-pay/gopay"
 	"github.com/go-pay/gopay/alipay"
-	"github.com/go-pay/gopay/pkg/xlog"
+	"github.com/go-pay/xlog"
 )
 
 func UserInfoAuth() {
@@ -34,5 +34,5 @@ func UserInfoAuth() {
 		xlog.Error("err:", err)
 		return
 	}
-	xlog.Debug("aliRsp:", *aliRsp)
+	xlog.Debug("aliRsp:", aliRsp)
 }

@@ -11,13 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"reflect"
 	"strings"
 
 	"github.com/go-pay/gopay"
-	"github.com/go-pay/gopay/pkg/util"
 )
 
 // ParseNotifyToBodyMap 解析QQ支付异步通知的结果到BodyMap
@@ -25,9 +23,9 @@ import (
 // 返回参数bm：Notify请求的参数
 // 返回参数err：错误信息
 func ParseNotifyToBodyMap(req *http.Request) (bm gopay.BodyMap, err error) {
-	bs, err := ioutil.ReadAll(io.LimitReader(req.Body, int64(3<<20))) // default 3MB change the size you want;
+	bs, err := io.ReadAll(io.LimitReader(req.Body, int64(3<<20))) // default 3MB change the size you want;
 	if err != nil {
-		return nil, fmt.Errorf("ioutil.ReadAll：%w", err)
+		return nil, fmt.Errorf("io.ReadAll: %w", err)
 	}
 	bm = make(gopay.BodyMap)
 	if err = xml.Unmarshal(bs, &bm); err != nil {
@@ -41,7 +39,7 @@ func ParseNotifyToBodyMap(req *http.Request) (bm gopay.BodyMap, err error) {
 func ParseNotify(req *http.Request) (notifyReq *NotifyRequest, err error) {
 	notifyReq = new(NotifyRequest)
 	if err = xml.NewDecoder(req.Body).Decode(notifyReq); err != nil {
-		return nil, fmt.Errorf("xml.NewDecoder.Decode：%w", err)
+		return nil, fmt.Errorf("xml.NewDecoder.Decode: %w", err)
 	}
 	return
 }
@@ -53,8 +51,8 @@ func ParseNotify(req *http.Request) (notifyReq *NotifyRequest, err error) {
 //	bean：微信同步返回的结构体 qqRsp 或 异步通知解析的结构体 notifyReq
 //	返回参数ok：是否验签通过
 //	返回参数err：其他错误信息，不要根据 error 是否为空来判断验签正确与否，需再单独判断返回的 ok
-func VerifySign(apiKey, signType string, bean interface{}) (ok bool, err error) {
-	if apiKey == util.NULL || signType == util.NULL {
+func VerifySign(apiKey, signType string, bean any) (ok bool, err error) {
+	if apiKey == gopay.NULL || signType == gopay.NULL {
 		return false, errors.New("apiKey or signType can not null")
 	}
 	if bean == nil {
@@ -92,7 +90,7 @@ func (w *NotifyResponse) ToXmlString() (xmlStr string) {
 	buffer.WriteString("<xml><return_code>")
 	buffer.WriteString(w.ReturnCode)
 	buffer.WriteString("</return_code>")
-	if w.ReturnMsg != util.NULL {
+	if w.ReturnMsg != gopay.NULL {
 		buffer.WriteString("<return_msg>")
 		buffer.WriteString(w.ReturnMsg)
 		buffer.WriteString("</return_msg>")

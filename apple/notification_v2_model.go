@@ -49,11 +49,11 @@ type NotificationV2Req struct {
 // https://developer.apple.com/documentation/appstoreservernotifications/responsebodyv2decodedpayload
 type NotificationV2Payload struct {
 	jwt.StandardClaims
-	NotificationType    string `json:"notificationType"`
-	Subtype             string `json:"subtype"`
-	NotificationUUID    string `json:"notificationUUID"`
-	NotificationVersion string `json:"notificationVersion"`
-	Data                *Data  `json:"data"`
+	NotificationType string `json:"notificationType"`
+	Subtype          string `json:"subtype"`
+	NotificationUUID string `json:"notificationUUID"`
+	Version          string `json:"version"`
+	Data             *Data  `json:"data"`
 }
 
 func (d *NotificationV2Payload) DecodeRenewalInfo() (ri *RenewalInfo, err error) {
@@ -64,8 +64,7 @@ func (d *NotificationV2Payload) DecodeRenewalInfo() (ri *RenewalInfo, err error)
 		return nil, fmt.Errorf("data.signedRenewalInfo is empty")
 	}
 	ri = &RenewalInfo{}
-	_, err = ExtractClaims(d.Data.SignedRenewalInfo, ri)
-	if err != nil {
+	if err = ExtractClaims(d.Data.SignedRenewalInfo, ri); err != nil {
 		return nil, err
 	}
 	return
@@ -79,8 +78,7 @@ func (d *NotificationV2Payload) DecodeTransactionInfo() (ti *TransactionInfo, er
 		return nil, fmt.Errorf("data.signedTransactionInfo is empty")
 	}
 	ti = &TransactionInfo{}
-	_, err = ExtractClaims(d.Data.SignedTransactionInfo, ti)
-	if err != nil {
+	if err = ExtractClaims(d.Data.SignedTransactionInfo, ti); err != nil {
 		return nil, err
 	}
 	return
@@ -99,19 +97,24 @@ type Data struct {
 // RenewalInfo https://developer.apple.com/documentation/appstoreservernotifications/jwsrenewalinfodecodedpayload
 type RenewalInfo struct {
 	jwt.StandardClaims
-	AutoRenewProductId          string `json:"autoRenewProductId"`
-	AutoRenewStatus             int64  `json:"autoRenewStatus"`
-	Environment                 string `json:"environment"`
-	ExpirationIntent            int64  `json:"expirationIntent"`
-	GracePeriodExpiresDate      int64  `json:"gracePeriodExpiresDate"`
-	IsInBillingRetryPeriod      bool   `json:"isInBillingRetryPeriod"`
-	OfferIdentifier             string `json:"offerIdentifier"`
-	OfferType                   int64  `json:"offerType"` // 1:An introductory offer. 2:A promotional offer. 3:An offer with a subscription offer code.
-	OriginalTransactionId       string `json:"originalTransactionId"`
-	PriceIncreaseStatus         int64  `json:"priceIncreaseStatus"` // 0: The customer hasn’t responded to the subscription price increase. 1:The customer consented to the subscription price increase.
-	ProductId                   string `json:"productId"`
-	RecentSubscriptionStartDate int64  `json:"recentSubscriptionStartDate"`
-	SignedDate                  int64  `json:"signedDate"`
+	AutoRenewProductId          string   `json:"autoRenewProductId"`
+	AutoRenewStatus             int64    `json:"autoRenewStatus"`
+	Currency                    string   `json:"currency"`
+	EligibleWinBackOfferIds     []string `json:"eligibleWinBackOfferIds"`
+	Environment                 string   `json:"environment"`
+	ExpirationIntent            int64    `json:"expirationIntent"`
+	GracePeriodExpiresDate      int64    `json:"gracePeriodExpiresDate"`
+	IsInBillingRetryPeriod      bool     `json:"isInBillingRetryPeriod"`
+	OfferDiscountType           string   `json:"offerDiscountType"`
+	OfferIdentifier             string   `json:"offerIdentifier"`
+	OfferType                   int64    `json:"offerType"` // 1:An introductory offer. 2:A promotional offer. 3:An offer with a subscription offer code.
+	OriginalTransactionId       string   `json:"originalTransactionId"`
+	PriceIncreaseStatus         int64    `json:"priceIncreaseStatus"` // 0: The customer hasn’t responded to the subscription price increase. 1:The customer consented to the subscription price increase.
+	ProductId                   string   `json:"productId"`
+	RecentSubscriptionStartDate int64    `json:"recentSubscriptionStartDate"`
+	RenewalDate                 int64    `json:"renewalDate,omitempty"` // The UNIX time, in milliseconds, that the most recent auto-renewable subscription purchase expires.
+	RenewalPrice                int64    `json:"renewalPrice"`
+	SignedDate                  int64    `json:"signedDate"`
 }
 
 // TransactionInfo https://developer.apple.com/documentation/appstoreservernotifications/jwstransactiondecodedpayload
@@ -119,22 +122,45 @@ type TransactionInfo struct {
 	jwt.StandardClaims
 	AppAccountToken             string `json:"appAccountToken"`
 	BundleId                    string `json:"bundleId"`
+	Currency                    string `json:"currency"`
 	Environment                 string `json:"environment"`
 	ExpiresDate                 int64  `json:"expiresDate"`
 	InAppOwnershipType          string `json:"inAppOwnershipType"` // FAMILY_SHARED  PURCHASED
 	IsUpgraded                  bool   `json:"isUpgraded"`
+	OfferDiscountType           string `json:"offerDiscountType"`
 	OfferIdentifier             string `json:"offerIdentifier"`
 	OfferType                   int64  `json:"offerType"` // 1:An introductory offer. 2:A promotional offer. 3:An offer with a subscription offer code.
 	OriginalPurchaseDate        int64  `json:"originalPurchaseDate"`
 	OriginalTransactionId       string `json:"originalTransactionId"`
+	Price                       int64  `json:"price"`
 	ProductId                   string `json:"productId"`
 	PurchaseDate                int64  `json:"purchaseDate"`
 	Quantity                    int64  `json:"quantity"`
 	RevocationDate              int64  `json:"revocationDate"`
 	RevocationReason            int    `json:"revocationReason"`
 	SignedDate                  int64  `json:"signedDate"` // Auto-Renewable Subscription: An auto-renewable subscription.  Non-Consumable: A non-consumable in-app purchase.  Consumable: A consumable in-app purchase.  Non-Renewing Subscription: A non-renewing subcription.
+	Storefront                  string `json:"storefront"`
+	StorefrontId                string `json:"storefrontId"`
 	SubscriptionGroupIdentifier string `json:"subscriptionGroupIdentifier"`
 	TransactionId               string `json:"transactionId"`
+	TransactionReason           string `json:"transactionReason"`
 	Type                        string `json:"type"`
 	WebOrderLineItemId          string `json:"webOrderLineItemId"`
+}
+
+type NotificationHistoryRsp struct {
+	StatusCodeErr
+	HasMore             bool                `json:"hasMore"`
+	PaginationToken     string              `json:"paginationToken"`
+	NotificationHistory []*NotificationItem `json:"notificationHistory"`
+}
+
+type NotificationItem struct {
+	SendAttempts  []*SendAttemptItem `json:"sendAttempts"`
+	SignedPayload string             `json:"signedPayload"`
+}
+
+type SendAttemptItem struct {
+	AttemptDate       int64  `json:"attemptDate"`
+	SendAttemptResult string `json:"sendAttemptResult"`
 }

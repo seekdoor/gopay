@@ -7,16 +7,12 @@ import (
 	"net/http"
 
 	"github.com/go-pay/gopay"
-	"github.com/go-pay/gopay/pkg/util"
 )
 
-// 合单APP下单API
+// 合单下单-APP
 // Code = 0 is success
-// 商户文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter5_1_1.shtml
-// 服务商文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter5_1_1.shtml
-// 电商文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter7_3_1.shtml
 func (c *ClientV3) V3CombineTransactionApp(ctx context.Context, bm gopay.BodyMap) (wxRsp *PrepayRsp, err error) {
-	if bm.GetString("combine_mchid") == util.NULL {
+	if bm.GetString("combine_mchid") == gopay.NULL {
 		bm.Set("combine_mchid", c.Mchid)
 	}
 	authorization, err := c.authorization(MethodPost, v3CombinePayApp, bm)
@@ -40,16 +36,10 @@ func (c *ClientV3) V3CombineTransactionApp(ctx context.Context, bm gopay.BodyMap
 	return wxRsp, c.verifySyncSign(si)
 }
 
-// 合单JSAPI/小程序下单API
+// 合单下单-JSAPI/小程序
 // Code = 0 is success
-// 商户JSAPI文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter5_1_3.shtml
-// 商户小程序文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter5_1_4.shtml
-// 服务商JSAPI文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter5_1_3.shtml
-// 服务商小程序文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter5_1_4.shtml
-// 电商JSAPI文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter7_3_3.shtml
-// 电商小程序文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter7_3_4.shtml
 func (c *ClientV3) V3CombineTransactionJsapi(ctx context.Context, bm gopay.BodyMap) (wxRsp *PrepayRsp, err error) {
-	if bm.GetString("combine_mchid") == util.NULL {
+	if bm.GetString("combine_mchid") == gopay.NULL {
 		bm.Set("combine_mchid", c.Mchid)
 	}
 	authorization, err := c.authorization(MethodPost, v3CombinePayJsapi, bm)
@@ -73,13 +63,10 @@ func (c *ClientV3) V3CombineTransactionJsapi(ctx context.Context, bm gopay.BodyM
 	return wxRsp, c.verifySyncSign(si)
 }
 
-// 合单Native下单API
+// 合单下单-NATIVE
 // Code = 0 is success
-// 商户文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter5_1_5.shtml
-// 服务商文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter5_1_5.shtml
-// 电商文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter7_3_5.shtml
 func (c *ClientV3) V3CombineTransactionNative(ctx context.Context, bm gopay.BodyMap) (wxRsp *NativeRsp, err error) {
-	if bm.GetString("combine_mchid") == util.NULL {
+	if bm.GetString("combine_mchid") == gopay.NULL {
 		bm.Set("combine_mchid", c.Mchid)
 	}
 	authorization, err := c.authorization(MethodPost, v3CombineNative, bm)
@@ -103,11 +90,10 @@ func (c *ClientV3) V3CombineTransactionNative(ctx context.Context, bm gopay.Body
 	return wxRsp, c.verifySyncSign(si)
 }
 
-// 合单H5下单API
+// 合单下单-H5
 // Code = 0 is success
-// 商户文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter5_1_2.shtml
 func (c *ClientV3) V3CombineTransactionH5(ctx context.Context, bm gopay.BodyMap) (wxRsp *H5Rsp, err error) {
-	if bm.GetString("combine_mchid") == util.NULL {
+	if bm.GetString("combine_mchid") == gopay.NULL {
 		bm.Set("combine_mchid", c.Mchid)
 	}
 	authorization, err := c.authorization(MethodPost, v3CombinePayH5, bm)
@@ -131,11 +117,36 @@ func (c *ClientV3) V3CombineTransactionH5(ctx context.Context, bm gopay.BodyMap)
 	return wxRsp, c.verifySyncSign(si)
 }
 
-// 合单查询订单API
+// 合单QQ小程序下单-H5
 // Code = 0 is success
-// 商户文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter5_1_11.shtml
-// 服务商文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter5_1_11.shtml
-// 电商文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter7_3_11.shtml
+func (c *ClientV3) V3CombineQQTransactionH5(ctx context.Context, qqAppid, accessToken, realNotifyUrl string, bm gopay.BodyMap) (wxRsp *H5Rsp, err error) {
+	if bm.GetString("combine_mchid") == gopay.NULL {
+		bm.Set("combine_mchid", c.Mchid)
+	}
+	authorization, err := c.authorization(MethodPost, v3CombinePayH5, bm)
+	if err != nil {
+		return nil, err
+	}
+	path := "/wxpay/v3/combine-transactions/h5?appid=" + qqAppid + "&access_token=" + accessToken + "&real_notify_url=" + realNotifyUrl
+	res, si, bs, err := c.doProdPostWithHost(ctx, bm, "https://api.q.qq.com", path, authorization)
+	if err != nil {
+		return nil, err
+	}
+	wxRsp = &H5Rsp{Code: Success, SignInfo: si}
+	wxRsp.Response = new(H5Url)
+	if err = json.Unmarshal(bs, wxRsp.Response); err != nil {
+		return nil, fmt.Errorf("[%w]: %v, bytes: %s", gopay.UnmarshalErr, err, string(bs))
+	}
+	if res.StatusCode != http.StatusOK {
+		wxRsp.Code = res.StatusCode
+		wxRsp.Error = string(bs)
+		return wxRsp, nil
+	}
+	return wxRsp, c.verifySyncSign(si)
+}
+
+// 合单查询订单
+// Code = 0 is success
 func (c *ClientV3) V3CombineQueryOrder(ctx context.Context, traderNo string) (wxRsp *CombineQueryOrderRsp, err error) {
 	uri := fmt.Sprintf(v3CombineQuery, traderNo)
 	authorization, err := c.authorization(MethodGet, uri, nil)
@@ -160,11 +171,8 @@ func (c *ClientV3) V3CombineQueryOrder(ctx context.Context, traderNo string) (wx
 	return wxRsp, c.verifySyncSign(si)
 }
 
-// 合单关闭订单API
+// 合单关闭订单
 // Code = 0 is success
-// 商户文档：https://pay.weixin.qq.com/wiki/doc/apiv3/apis/chapter5_1_12.shtml
-// 服务商文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter5_1_12.shtml
-// 电商文档：https://pay.weixin.qq.com/wiki/doc/apiv3_partner/apis/chapter7_3_12.shtml
 func (c *ClientV3) V3CombineCloseOrder(ctx context.Context, tradeNo string, bm gopay.BodyMap) (wxRsp *CloseOrderRsp, err error) {
 	url := fmt.Sprintf(v3CombineClose, tradeNo)
 	authorization, err := c.authorization(MethodPost, url, bm)
